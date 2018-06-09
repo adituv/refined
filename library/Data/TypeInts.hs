@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeOperators #-}
 -- | Provides type-level signed integers using existing machinery for
 --   type-level natural numbers
-module Data.TypeInt(
+module Data.TypeInts (
   -- * Type-level Naturals
   Nat, KnownNat, natVal,
 

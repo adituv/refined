@@ -166,7 +166,7 @@ import           Data.Proxy                   (Proxy (Proxy))
 import           Data.Semigroup               (Semigroup((<>)))
 import           Data.These                   (These(..))
 import           Data.Typeable                (TypeRep, Typeable, typeOf)
-import           Data.TypeInt
+import           Data.TypeInts                (KnownInt, KnownNat, Nat, Neg, intVal, natVal, type (<=), type (<))
 import           Data.Void                    (Void)
 import           Text.Read                    (Read (readsPrec), lex, readParen)
 import           Text.Show                    (Show (show))
