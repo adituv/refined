@@ -41,6 +41,7 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE RoleAnnotations            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -94,13 +95,16 @@ module Refined
   , To
   , FromTo
   , EqualTo
-  , NotEqualTo 
+  , NotEqualTo
   , Positive
   , NonPositive
   , Negative
   , NonNegative
   , ZeroToOne
   , NonZero
+
+    -- ** Negative type-level numbers
+  , Neg
 
     -- * Foldable predicates
   , SizeLessThan
@@ -162,6 +166,7 @@ import           Data.Proxy                   (Proxy (Proxy))
 import           Data.Semigroup               (Semigroup((<>)))
 import           Data.These                   (These(..))
 import           Data.Typeable                (TypeRep, Typeable, typeOf)
+import           Data.TypeInt
 import           Data.Void                    (Void)
 import           Text.Read                    (Read (readsPrec), lex, readParen)
 import           Text.Show                    (Show (show))
@@ -179,7 +184,6 @@ import qualified Control.Monad.Trans.Except   as ExceptT
 
 import           GHC.Exts                     (IsList(Item, toList))
 import           GHC.Generics                 (Generic, Generic1)
-import           GHC.TypeLits                 (type (<=), KnownNat, Nat, natVal)
 
 import qualified Data.Text.Prettyprint.Doc    as PP
 
@@ -210,14 +214,14 @@ f .> g = \x -> g (f x)
 --   of functions, because the use of the newtype constructor
 --   gets around the checking of the predicate. This restriction
 --   on the user makes 'unrefine' safe.
---   
+--
 --   If you would /really/ like to
 --   construct a 'Refined' value without checking the predicate,
 --   use 'Unsafe.Coerce.unsafeCoerce'.
 newtype Refined p x = Refined x
   deriving
     ( Eq
-    , Foldable 
+    , Foldable
     , Ord
     , Show
     , Typeable
@@ -324,7 +328,7 @@ unrefine = coerce
 -- | A typeclass which defines a runtime interpretation of
 --   a type-level predicate @p@ for type @x@.
 class (Typeable p) => Predicate p x where
-  {-# MINIMAL validate #-} 
+  {-# MINIMAL validate #-}
   -- | Check the value @x@ according to the predicate @p@,
   --   producing an error string if the value does not satisfy.
   validate :: (Monad m) => p -> x -> RefineT m ()
@@ -454,11 +458,11 @@ instance (IsList t, Ord (Item t)) => Predicate Descending t where
 
 -- | A 'Predicate' ensuring that the value is less than the
 --   specified type-level number.
-data LessThan (n :: Nat)
+data LessThan (n :: k)
 
-instance (Ord x, Num x, KnownNat n) => Predicate (LessThan n) x where
+instance forall x (n :: k). (Ord x, Num x, KnownInt n, Typeable n, Typeable k) => Predicate (LessThan n) x where
   validate p x = do
-    let x' = natVal p
+    let x' = intVal p
     unless (x < fromIntegral x') $ do
       throwRefineOtherException (typeOf p)
         $ "Value is not less than " <> PP.pretty x'
@@ -467,11 +471,11 @@ instance (Ord x, Num x, KnownNat n) => Predicate (LessThan n) x where
 
 -- | A 'Predicate' ensuring that the value is greater than the
 --   specified type-level number.
-data GreaterThan (n :: Nat)
+data GreaterThan (n :: k)
 
-instance (Ord x, Num x, KnownNat n) => Predicate (GreaterThan n) x where
+instance forall x (n :: k). (Ord x, Num x, KnownInt n, Typeable n, Typeable k) => Predicate (GreaterThan n) x where
   validate p x = do
-    let x' = natVal p
+    let x' = intVal p
     unless (x > fromIntegral x') $ do
       throwRefineOtherException (typeOf p)
         $ "Value is not greater than " <> PP.pretty x'
@@ -480,11 +484,11 @@ instance (Ord x, Num x, KnownNat n) => Predicate (GreaterThan n) x where
 
 -- | A 'Predicate' ensuring that the value is greater than or equal to the
 --   specified type-level number.
-data From (n :: Nat)
+data From (n :: k)
 
-instance (Ord x, Num x, KnownNat n) => Predicate (From n) x where
+instance forall x (n :: k). (Ord x, Num x, KnownInt n, Typeable n, Typeable k) => Predicate (From n) x where
   validate p x = do
-    let x' = natVal p
+    let x' = intVal p
     unless (x >= fromIntegral x') $ do
       throwRefineOtherException (typeOf p)
         $ "Value is less than " <> PP.pretty x'
@@ -493,11 +497,11 @@ instance (Ord x, Num x, KnownNat n) => Predicate (From n) x where
 
 -- | A 'Predicate' ensuring that the value is less than or equal to the
 --   specified type-level number.
-data To (n :: Nat)
+data To (n :: k)
 
-instance (Ord x, Num x, KnownNat n) => Predicate (To n) x where
+instance forall x (n :: k). (Ord x, Num x, KnownInt n, Typeable n, Typeable k) => Predicate (To n) x where
   validate p x = do
-    let x' = natVal p
+    let x' = intVal p
     unless (x <= fromIntegral x') $ do
       throwRefineOtherException (typeOf p)
         $ "Value is greater than " <> PP.pretty x'
@@ -505,13 +509,15 @@ instance (Ord x, Num x, KnownNat n) => Predicate (To n) x where
 --------------------------------------------------------------------------------
 
 -- | A 'Predicate' ensuring that the value is within an inclusive range.
-data FromTo (mn :: Nat) (mx :: Nat)
+data FromTo (mn :: k) (mx :: k)
 
-instance ( Ord x, Num x, KnownNat mn, KnownNat mx, mn <= mx
+instance forall x (mn :: k) (mx :: k).
+         ( Ord x, Num x, KnownInt mn, KnownInt mx, mn <= mx
+         , Typeable mn, Typeable mx, Typeable k
          ) => Predicate (FromTo mn mx) x where
   validate p x = do
-    let mn' = natVal (Proxy @mn)
-    let mx' = natVal (Proxy @mx)
+    let mn' = intVal (Proxy @mn)
+    let mx' = intVal (Proxy @mx)
     unless ((x >= fromIntegral mn') && (x <= fromIntegral mx')) $ do
       let msg = [ "Value is out of range (minimum: "
                 , PP.pretty mn'
@@ -525,11 +531,13 @@ instance ( Ord x, Num x, KnownNat mn, KnownNat mx, mn <= mx
 
 -- | A 'Predicate' ensuring that the value is equal to the specified
 --   type-level number @n@.
-data EqualTo (n :: Nat)
+data EqualTo (n :: k)
 
-instance (Eq x, Num x, KnownNat n) => Predicate (EqualTo n) x where
+instance forall x (n :: k).
+         (Eq x, Num x, KnownInt n, Typeable n, Typeable k
+         ) => Predicate (EqualTo n) x where
   validate p x = do
-    let x' = natVal p
+    let x' = intVal p
     unless (x == fromIntegral x') $ do
       throwRefineOtherException (typeOf p)
         $ "Value does not equal " <> PP.pretty x'
@@ -538,11 +546,12 @@ instance (Eq x, Num x, KnownNat n) => Predicate (EqualTo n) x where
 
 -- | A 'Predicate' ensuring that the value is not equal to the specified
 --   type-level number @n@.
-data NotEqualTo (n :: Nat)
+data NotEqualTo (n :: k)
 
-instance (Eq x, Num x, KnownNat n) => Predicate (NotEqualTo n) x where
+instance forall x (n :: k). (Eq x, Num x, KnownInt n, Typeable n, Typeable k
+                            ) => Predicate (NotEqualTo n) x where
   validate p x = do
-    let x' = natVal p
+    let x' = intVal p
     unless (x /= fromIntegral x') $ do
       throwRefineOtherException (typeOf p)
         $ "Value does equal " <> PP.pretty x'
