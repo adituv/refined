@@ -47,6 +47,8 @@ library
   exposed-modules:
     Refined
     Refined.TH
+  other-modules:
+    Data.TypeInt
   default-language:
     Haskell2010
   build-depends:
