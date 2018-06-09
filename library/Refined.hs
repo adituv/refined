@@ -601,13 +601,21 @@ class Weaken from to where
 
 instance (n <= m)         => Weaken (LessThan n)    (LessThan m)
 instance (n <= m)         => Weaken (LessThan n)    (To m)
+instance (n <  m)         => Weaken (To n)          (LessThan m)
 instance (n <= m)         => Weaken (To n)          (To m)
 instance (m <= n)         => Weaken (GreaterThan n) (GreaterThan m)
 instance (m <= n)         => Weaken (GreaterThan n) (From m)
+instance (m <  n)         => Weaken (From n)        (GreaterThan m)
 instance (m <= n)         => Weaken (From n)        (From m)
 instance (p <= n, m <= q) => Weaken (FromTo n m)    (FromTo p q)
 instance (p <= n)         => Weaken (FromTo n m)    (From p)
 instance (m <= q)         => Weaken (FromTo n m)    (To q)
+instance (n <  m)         => Weaken (EqualTo n)     (LessThan m)
+instance (m <  n)         => Weaken (EqualTo n)     (GreaterThan m)
+instance (n <= m)         => Weaken (EqualTo n)     (To m)
+instance (m <= n)         => Weaken (EqualTo n)     (From m)
+instance (m <= n, n <= o) => Weaken (EqualTo n)     (FromTo m o)
+instance                     Weaken (NotEqualTo n)  (And (LessThan n) (GreaterThan n))
 
 -- | This function helps type inference.
 --   It is equivalent to the following:
