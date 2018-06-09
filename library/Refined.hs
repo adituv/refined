@@ -509,11 +509,11 @@ instance forall x (n :: k). (Ord x, Num x, KnownInt n, Typeable n, Typeable k) =
 --------------------------------------------------------------------------------
 
 -- | A 'Predicate' ensuring that the value is within an inclusive range.
-data FromTo (mn :: k) (mx :: k)
+data FromTo (mn :: k1) (mx :: k2)
 
-instance forall x (mn :: k) (mx :: k).
+instance forall x (mn :: k1) (mx :: k2).
          ( Ord x, Num x, KnownInt mn, KnownInt mx, mn <= mx
-         , Typeable mn, Typeable mx, Typeable k
+         , Typeable mn, Typeable mx, Typeable k1, Typeable k2
          ) => Predicate (FromTo mn mx) x where
   validate p x = do
     let mn' = intVal (Proxy @mn)
