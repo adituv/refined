@@ -41,6 +41,7 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE RoleAnnotations            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -94,7 +95,7 @@ module Refined
   , To
   , FromTo
   , EqualTo
-  , NotEqualTo 
+  , NotEqualTo
   , Positive
   , NonPositive
   , Negative
@@ -140,7 +141,7 @@ module Refined
 --------------------------------------------------------------------------------
 
 import           Prelude
-                 (Num, error, fromIntegral, undefined)
+                 (Double, Real, error, fromIntegral, realToFrac, undefined)
 
 import           Control.Applicative          (Applicative (pure))
 import           Control.Exception            (Exception (displayException))
@@ -162,6 +163,8 @@ import           Data.Proxy                   (Proxy (Proxy))
 import           Data.Semigroup               (Semigroup((<>)))
 import           Data.These                   (These(..))
 import           Data.Typeable                (TypeRep, Typeable, typeOf)
+import           Data.TypeNums
+                 (KnownNat, KnownRat, Nat, natVal, ratVal, type (<=))
 import           Data.Void                    (Void)
 import           Text.Read                    (Read (readsPrec), lex, readParen)
 import           Text.Show                    (Show (show))
@@ -179,7 +182,6 @@ import qualified Control.Monad.Trans.Except   as ExceptT
 
 import           GHC.Exts                     (IsList(Item, toList))
 import           GHC.Generics                 (Generic, Generic1)
-import           GHC.TypeLits                 (type (<=), KnownNat, Nat, natVal)
 
 import qualified Data.Text.Prettyprint.Doc    as PP
 
@@ -200,6 +202,12 @@ infixl 9 .>
 f .> g = \x -> g (f x)
 {-# INLINE (.>) #-}
 
+-- Helper to convert to Double for pretty-printing rationals.  Type-restricted
+-- version of 'realToFrac'.
+asDouble :: Real a => a -> Double
+asDouble = realToFrac
+{-# INLINE asDouble #-}
+
 --------------------------------------------------------------------------------
 
 -- | A refinement type, which wraps a value of type @x@,
@@ -210,14 +218,14 @@ f .> g = \x -> g (f x)
 --   of functions, because the use of the newtype constructor
 --   gets around the checking of the predicate. This restriction
 --   on the user makes 'unrefine' safe.
---   
+--
 --   If you would /really/ like to
 --   construct a 'Refined' value without checking the predicate,
 --   use 'Unsafe.Coerce.unsafeCoerce'.
 newtype Refined p x = Refined x
   deriving
     ( Eq
-    , Foldable 
+    , Foldable
     , Ord
     , Show
     , Typeable
@@ -324,7 +332,7 @@ unrefine = coerce
 -- | A typeclass which defines a runtime interpretation of
 --   a type-level predicate @p@ for type @x@.
 class (Typeable p) => Predicate p x where
-  {-# MINIMAL validate #-} 
+  {-# MINIMAL validate #-}
   -- | Check the value @x@ according to the predicate @p@,
   --   producing an error string if the value does not satisfy.
   validate :: (Monad m) => p -> x -> RefineT m ()
@@ -454,69 +462,70 @@ instance (IsList t, Ord (Item t)) => Predicate Descending t where
 
 -- | A 'Predicate' ensuring that the value is less than the
 --   specified type-level number.
-data LessThan (n :: Nat)
+data LessThan (n :: k)
 
-instance (Ord x, Num x, KnownNat n) => Predicate (LessThan n) x where
+instance forall x (n :: k). (Real x, KnownRat n, Typeable n, Typeable k) => Predicate (LessThan n) x where
   validate p x = do
-    let x' = natVal p
-    unless (x < fromIntegral x') $ do
+    let x' = ratVal p
+    unless (realToFrac x < x') $ do
       throwRefineOtherException (typeOf p)
-        $ "Value is not less than " <> PP.pretty x'
+        $ "Value is not less than " <> PP.pretty (asDouble x')
 
 --------------------------------------------------------------------------------
 
 -- | A 'Predicate' ensuring that the value is greater than the
 --   specified type-level number.
-data GreaterThan (n :: Nat)
+data GreaterThan (n :: k)
 
-instance (Ord x, Num x, KnownNat n) => Predicate (GreaterThan n) x where
+instance forall x (n :: k). (Real x, KnownRat n, Typeable n, Typeable k) => Predicate (GreaterThan n) x where
   validate p x = do
-    let x' = natVal p
-    unless (x > fromIntegral x') $ do
+    let x' = ratVal p
+    unless (realToFrac x > x') $ do
       throwRefineOtherException (typeOf p)
-        $ "Value is not greater than " <> PP.pretty x'
+        $ "Value is not greater than " <> PP.pretty (asDouble x')
 
 --------------------------------------------------------------------------------
 
 -- | A 'Predicate' ensuring that the value is greater than or equal to the
 --   specified type-level number.
-data From (n :: Nat)
+data From (n :: k)
 
-instance (Ord x, Num x, KnownNat n) => Predicate (From n) x where
+instance forall x (n :: k). (Real x, KnownRat n, Typeable n, Typeable k) => Predicate (From n) x where
   validate p x = do
-    let x' = natVal p
-    unless (x >= fromIntegral x') $ do
+    let x' = ratVal p
+    unless (realToFrac x >= x') $ do
       throwRefineOtherException (typeOf p)
-        $ "Value is less than " <> PP.pretty x'
+        $ "Value is less than " <> PP.pretty (asDouble x')
 
 --------------------------------------------------------------------------------
 
 -- | A 'Predicate' ensuring that the value is less than or equal to the
 --   specified type-level number.
-data To (n :: Nat)
+data To (n :: k)
 
-instance (Ord x, Num x, KnownNat n) => Predicate (To n) x where
+instance forall x (n :: k). (Real x, KnownRat n, Typeable n, Typeable k) => Predicate (To n) x where
   validate p x = do
-    let x' = natVal p
-    unless (x <= fromIntegral x') $ do
+    let x' = ratVal p
+    unless (realToFrac x <= x') $ do
       throwRefineOtherException (typeOf p)
-        $ "Value is greater than " <> PP.pretty x'
+        $ "Value is greater than " <> PP.pretty (asDouble x')
 
 --------------------------------------------------------------------------------
 
 -- | A 'Predicate' ensuring that the value is within an inclusive range.
-data FromTo (mn :: Nat) (mx :: Nat)
+data FromTo (mn :: k1) (mx :: k2)
 
-instance ( Ord x, Num x, KnownNat mn, KnownNat mx, mn <= mx
-         ) => Predicate (FromTo mn mx) x where
+instance forall x (mn :: k1) (mx :: k2). ( Real x, KnownRat mn, KnownRat mx, mn <= mx
+                                         , Typeable mn, Typeable k1, Typeable mx, Typeable k2
+                                         ) => Predicate (FromTo mn mx) x where
   validate p x = do
-    let mn' = natVal (Proxy @mn)
-    let mx' = natVal (Proxy @mx)
-    unless ((x >= fromIntegral mn') && (x <= fromIntegral mx')) $ do
+    let mn' = ratVal (Proxy @mn)
+    let mx' = ratVal (Proxy @mx)
+    unless ((realToFrac x >= mn') && (realToFrac x <= mx')) $ do
       let msg = [ "Value is out of range (minimum: "
-                , PP.pretty mn'
+                , PP.pretty (asDouble mn')
                 , ", maximum: "
-                , PP.pretty mx'
+                , PP.pretty (asDouble mx')
                 , ")"
                 ] |> mconcat
       throwRefineOtherException (typeOf p) msg
@@ -525,27 +534,27 @@ instance ( Ord x, Num x, KnownNat mn, KnownNat mx, mn <= mx
 
 -- | A 'Predicate' ensuring that the value is equal to the specified
 --   type-level number @n@.
-data EqualTo (n :: Nat)
+data EqualTo (n :: k)
 
-instance (Eq x, Num x, KnownNat n) => Predicate (EqualTo n) x where
+instance forall x (n :: k). (Real x, KnownRat n, Typeable n, Typeable k) => Predicate (EqualTo n) x where
   validate p x = do
-    let x' = natVal p
-    unless (x == fromIntegral x') $ do
+    let x' = ratVal p
+    unless (realToFrac x == x') $ do
       throwRefineOtherException (typeOf p)
-        $ "Value does not equal " <> PP.pretty x'
+        $ "Value does not equal " <> PP.pretty (asDouble x')
 
 --------------------------------------------------------------------------------
 
 -- | A 'Predicate' ensuring that the value is not equal to the specified
 --   type-level number @n@.
-data NotEqualTo (n :: Nat)
+data NotEqualTo (n :: k)
 
-instance (Eq x, Num x, KnownNat n) => Predicate (NotEqualTo n) x where
+instance forall x (n :: k). (Real x, KnownRat n, Typeable n, Typeable k) => Predicate (NotEqualTo n) x where
   validate p x = do
-    let x' = natVal p
-    unless (x /= fromIntegral x') $ do
+    let x' = ratVal p
+    unless (realToFrac x /= x') $ do
       throwRefineOtherException (typeOf p)
-        $ "Value does equal " <> PP.pretty x'
+        $ "Value does equal " <> PP.pretty (asDouble x')
 
 --------------------------------------------------------------------------------
 
@@ -656,7 +665,7 @@ data RefineException
       --   this will be 'This', if it came from the @r@ predicate, this
       --   will be 'That', and if it came from both @l@ and @r@, this
       --   will be 'These'.
-      
+
       -- note to self: what am I, Dr. Seuss?
     }
 
@@ -712,7 +721,7 @@ instance Exception RefineException where
 --------------------------------------------------------------------------------
 
 -- | A monad transformer that adds @'RefineException'@s to other monads.
---   
+--
 --   The @'pure'@ and @'Control.Monad.return'@ functions yield computations that produce
 --   the given value, while @'>>='@ sequences two subcomputations, exiting
 --   on the first @'RefineException'@.
@@ -783,7 +792,7 @@ catchRefine
 catchRefine = MonadError.catchError
 
 -- | A handler for a @'RefineException'@.
---   
+--
 --   'throwRefineOtherException' is useful for defining what
 --   behaviour 'validate' should have in the event of a predicate failure.
 throwRefineOtherException
@@ -791,7 +800,7 @@ throwRefineOtherException
   => TypeRep
   -- ^ The 'TypeRep' of the 'Predicate'. This can usually be given by using 'typeOf'.
   -> PP.Doc Void
-  -- ^ A 'PP.Doc' 'Void' encoding a custom error message to be pretty-printed. 
+  -- ^ A 'PP.Doc' 'Void' encoding a custom error message to be pretty-printed.
   -> RefineT m a
 throwRefineOtherException rep
   = RefineOtherException rep .> throwRefine
